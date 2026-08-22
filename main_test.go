@@ -1,6 +1,15 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+func TestCopyGCSObjectRejectsEmptyArguments(t *testing.T) {
+	if err := copyGCSObject(context.Background(), "", "object", "file"); err == nil {
+		t.Fatal("empty bucket was accepted")
+	}
+}
 
 func TestValidateReadOnly(t *testing.T) {
 	for _, sql := range []string{"SELECT 1", "  with rows as (select 1) select * from rows"} {

@@ -27,6 +27,16 @@ printf '{"sql":"SELECT 1"}' | bqx ax-run bigquery_query
 
 Bqx performs a BigQuery dry run and only executes statements BigQuery identifies as `SELECT`. Results stop at 1,000 rows.
 
+## Google Cloud Storage
+
+Copy a private object with the same Google credentials:
+
+```sh
+bqx gcs-copy BUCKET OBJECT FILE
+```
+
+The destination is replaced atomically only after a non-empty object is downloaded.
+
 ## Test
 
 ```sh

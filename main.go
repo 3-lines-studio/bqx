@@ -1,17 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/bigquery"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -21,12 +27,18 @@ const maxRows = 1000
 var forbidden = regexp.MustCompile(`\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|MERGE|GRANT|REVOKE)\b`)
 
 func main() {
+	if len(os.Args) == 5 && os.Args[1] == "gcs-copy" {
+		if err := copyGCSObject(context.Background(), os.Args[2], os.Args[3], os.Args[4]); err != nil {
+			fail(1, err.Error())
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "ax-tools" {
 		fmt.Println(`{"name":"bigquery_query","description":"Run a read-only BigQuery SQL query","parameters":{"type":"object","properties":{"sql":{"type":"string","description":"SELECT or WITH query"}},"required":["sql"]}}`)
 		return
 	}
 	if len(os.Args) != 3 || os.Args[1] != "ax-run" || os.Args[2] != "bigquery_query" {
-		fmt.Fprintln(os.Stderr, "usage: bqx ax-tools | bqx ax-run bigquery_query")
+		fmt.Fprintln(os.Stderr, "usage: bqx ax-tools | bqx ax-run bigquery_query | bqx gcs-copy BUCKET OBJECT FILE")
 		os.Exit(2)
 	}
 	var input struct {
@@ -68,6 +80,66 @@ func newClient(ctx context.Context, project string) (*bigquery.Client, error) {
 		return bigquery.NewClient(ctx, project)
 	}
 	return bigquery.NewClient(ctx, project, option.WithCredentialsJSON([]byte(credentials)))
+}
+
+func copyGCSObject(ctx context.Context, bucket, object, destination string) error {
+	if bucket == "" || object == "" || destination == "" {
+		return errors.New("bucket, object, and file are required")
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	client, err := googleHTTPClient(ctx)
+	if err != nil {
+		return fmt.Errorf("google credentials: %w", err)
+	}
+	endpoint := "https://storage.googleapis.com/storage/v1/b/" + url.PathEscape(bucket) + "/o/" + url.QueryEscape(object) + "?alt=media"
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("download object: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return fmt.Errorf("download object: %s: %s", response.Status, strings.TrimSpace(string(body)))
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 5<<20))
+	if err != nil {
+		return fmt.Errorf("read object: %w", err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return errors.New("downloaded object is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+	temporary := destination + ".tmp"
+	if err := os.WriteFile(temporary, data, 0644); err != nil {
+		return fmt.Errorf("write object: %w", err)
+	}
+	if err := os.Rename(temporary, destination); err != nil {
+		_ = os.Remove(temporary)
+		return fmt.Errorf("replace object: %w", err)
+	}
+	return nil
+}
+
+func googleHTTPClient(ctx context.Context) (*http.Client, error) {
+	credentials := os.Getenv("BQ_CREDENTIALS_JSON")
+	if credentials == "" {
+		credentials = os.Getenv("ALFRED_BQ_CREDENTIALS_JSON")
+	}
+	if credentials == "" {
+		return google.DefaultClient(ctx, "https://www.googleapis.com/auth/devstorage.read_only")
+	}
+	googleCredentials, err := google.CredentialsFromJSON(ctx, []byte(credentials), "https://www.googleapis.com/auth/devstorage.read_only")
+	if err != nil {
+		return nil, err
+	}
+	return oauth2.NewClient(ctx, googleCredentials.TokenSource), nil
 }
 
 func query(ctx context.Context, client *bigquery.Client, sql string) (string, error) {
