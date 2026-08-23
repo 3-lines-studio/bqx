@@ -27,17 +27,21 @@ const maxRows = 1000
 var forbidden = regexp.MustCompile(`\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|MERGE|GRANT|REVOKE)\b`)
 
 func main() {
-	if len(os.Args) == 5 && os.Args[1] == "gcs-copy" {
-		if err := copyGCSObject(context.Background(), os.Args[2], os.Args[3], os.Args[4]); err != nil {
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	if len(args) == 4 && args[0] == "gcs-copy" {
+		if err := copyGCSObject(context.Background(), args[1], args[2], args[3]); err != nil {
 			fail(1, err.Error())
 		}
 		return
 	}
-	if len(os.Args) == 2 && os.Args[1] == "ax-tools" {
+	if len(args) == 1 && args[0] == "ax-tools" {
 		fmt.Println(`{"name":"bigquery_query","description":"Run a read-only BigQuery SQL query","parameters":{"type":"object","properties":{"sql":{"type":"string","description":"SELECT or WITH query"}},"required":["sql"]}}`)
 		return
 	}
-	if len(os.Args) != 3 || os.Args[1] != "ax-run" || os.Args[2] != "bigquery_query" {
+	if len(args) != 2 || args[0] != "ax-run" || args[1] != "bigquery_query" {
 		fmt.Fprintln(os.Stderr, "usage: bqx ax-tools | bqx ax-run bigquery_query | bqx gcs-copy BUCKET OBJECT FILE")
 		os.Exit(2)
 	}
