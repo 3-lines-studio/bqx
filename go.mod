@@ -1,9 +1,10 @@
 module github.com/3-lines-studio/bqx
 
-go 1.24.0
+go 1.27.0
 
 require (
 	cloud.google.com/go/bigquery v1.72.0
+	golang.org/x/oauth2 v0.31.0
 	google.golang.org/api v0.250.0
 )
 
@@ -37,7 +38,6 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
-	golang.org/x/oauth2 v0.31.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
