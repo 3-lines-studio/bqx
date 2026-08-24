@@ -21,8 +21,8 @@ Credentials may also be passed directly with `BQ_CREDENTIALS_JSON`. The legacy A
 ## Protocol
 
 ```sh
-bqx ax-tools
-printf '{"sql":"SELECT 1"}' | bqx ax-run bigquery_query
+bqx describe
+printf '{"sql":"SELECT 1"}' | bqx run bigquery_query
 ```
 
 Bqx performs a BigQuery dry run and only executes statements BigQuery identifies as `SELECT`. Results stop at 1,000 rows.

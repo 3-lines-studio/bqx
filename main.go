@@ -37,12 +37,12 @@ func main() {
 		}
 		return
 	}
-	if len(args) == 1 && args[0] == "ax-tools" {
+	if len(args) == 1 && args[0] == "describe" {
 		fmt.Println(`{"name":"bigquery_query","description":"Run a read-only BigQuery SQL query","parameters":{"type":"object","properties":{"sql":{"type":"string","description":"SELECT or WITH query"}},"required":["sql"]}}`)
 		return
 	}
-	if len(args) != 2 || args[0] != "ax-run" || args[1] != "bigquery_query" {
-		fmt.Fprintln(os.Stderr, "usage: bqx ax-tools | bqx ax-run bigquery_query | bqx gcs-copy BUCKET OBJECT FILE")
+	if len(args) != 2 || args[0] != "run" || args[1] != "bigquery_query" {
+		fmt.Fprintln(os.Stderr, "usage: bqx describe | bqx run bigquery_query | bqx gcs-copy BUCKET OBJECT FILE")
 		os.Exit(2)
 	}
 	var input struct {
