@@ -54,12 +54,9 @@ func main() {
 	if err := validateReadOnly(input.SQL); err != nil {
 		fail(2, err.Error())
 	}
-	project := os.Getenv("BQ_PROJECT_ID")
+	project := os.Getenv("GOOGLE_CLOUD_PROJECT")
 	if project == "" {
-		project = os.Getenv("ALFRED_BQ_PROJECT_ID")
-	}
-	if project == "" {
-		fail(2, "BQ_PROJECT_ID is required")
+		fail(2, "GOOGLE_CLOUD_PROJECT is required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -75,21 +72,16 @@ func main() {
 	fmt.Println(result)
 }
 
-func credentialsJSON() string {
-	if c := os.Getenv("BQ_CREDENTIALS_JSON"); c != "" {
-		return c
-	}
-	if c := os.Getenv("ALFRED_BQ_CREDENTIALS_JSON"); c != "" {
-		return c
-	}
-	if c := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); strings.HasPrefix(strings.TrimSpace(c), "{") {
+func inlineCredentials() string {
+	c := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	if strings.HasPrefix(strings.TrimSpace(c), "{") {
 		return c
 	}
 	return ""
 }
 
 func newClient(ctx context.Context, project string) (*bigquery.Client, error) {
-	if credentials := credentialsJSON(); credentials != "" {
+	if credentials := inlineCredentials(); credentials != "" {
 		return bigquery.NewClient(ctx, project, option.WithCredentialsJSON([]byte(credentials)))
 	}
 	return bigquery.NewClient(ctx, project)
@@ -141,7 +133,7 @@ func copyGCSObject(ctx context.Context, bucket, object, destination string) erro
 }
 
 func googleHTTPClient(ctx context.Context) (*http.Client, error) {
-	if credentials := credentialsJSON(); credentials != "" {
+	if credentials := inlineCredentials(); credentials != "" {
 		googleCredentials, err := google.CredentialsFromJSON(ctx, []byte(credentials), "https://www.googleapis.com/auth/devstorage.read_only")
 		if err != nil {
 			return nil, err

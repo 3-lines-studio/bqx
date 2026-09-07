@@ -13,12 +13,12 @@ curl -fsSL https://ax.3lines.studio/install.sh | sh -s -- bqx
 ## Configure
 
 ```sh
-export BQ_PROJECT_ID=my-project
+export GOOGLE_CLOUD_PROJECT=my-project
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 export AX_TOOLS=bqx
 ```
 
-Credentials may also be passed directly with `BQ_CREDENTIALS_JSON`. The legacy Alfred names `ALFRED_BQ_PROJECT_ID` and `ALFRED_BQ_CREDENTIALS_JSON` remain supported during migration.
+`GOOGLE_APPLICATION_CREDENTIALS` accepts either a path to a service-account JSON file or the inline JSON content itself (a JSON object).
 
 ## Protocol
 

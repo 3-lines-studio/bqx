@@ -254,8 +254,6 @@ func TestCopyGCSObjectRejectsHTTPError(t *testing.T) {
 }
 
 func TestGoogleHTTPClientRequiresCredentials(t *testing.T) {
-	t.Setenv("BQ_CREDENTIALS_JSON", "")
-	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/nonexistent")
 	if _, err := googleHTTPClient(context.Background()); err == nil {
 		t.Fatal("googleHTTPClient should fail without any credentials")
@@ -263,8 +261,6 @@ func TestGoogleHTTPClientRequiresCredentials(t *testing.T) {
 }
 
 func TestGoogleHTTPClientAcceptsInlineCredentials(t *testing.T) {
-	t.Setenv("BQ_CREDENTIALS_JSON", "")
-	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", `{"type":"authorized_user","client_id":"cid","client_secret":"csec","refresh_token":"rt"}`)
 	if _, err := googleHTTPClient(context.Background()); err != nil {
 		t.Fatalf("inline GOOGLE_APPLICATION_CREDENTIALS should be accepted: %v", err)
@@ -288,38 +284,18 @@ func TestCopyGCSObjectReportsDirectoryError(t *testing.T) {
 	}
 }
 
-func TestNewClientCredentialPrecedence(t *testing.T) {
+func TestNewClientCredentialResolution(t *testing.T) {
 	const valid = `{"type":"authorized_user","client_id":"cid","client_secret":"csec","refresh_token":"rt"}`
-	t.Setenv("BQ_CREDENTIALS_JSON", valid)
-	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "not-json")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", valid)
 	c, err := newClient(context.Background(), "proj")
 	if err != nil {
-		t.Fatalf("modern credential should take precedence: %v", err)
+		t.Fatalf("inline GOOGLE_APPLICATION_CREDENTIALS should be accepted: %v", err)
 	}
 	_ = c.Close()
 
-	t.Setenv("BQ_CREDENTIALS_JSON", "")
-	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", valid)
-	c, err = newClient(context.Background(), "proj")
-	if err != nil {
-		t.Fatalf("legacy credential fallback: %v", err)
-	}
-	_ = c.Close()
-
-	t.Setenv("BQ_CREDENTIALS_JSON", "")
-	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
-	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", valid)
-	c, err = newClient(context.Background(), "proj")
-	if err != nil {
-		t.Fatalf("GOOGLE_APPLICATION_CREDENTIALS inline JSON should be accepted: %v", err)
-	}
-	_ = c.Close()
-
-	t.Setenv("BQ_CREDENTIALS_JSON", "")
-	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/nonexistent")
 	if _, err := newClient(context.Background(), "proj"); err == nil {
-		t.Fatal("client construction should fail without any credentials")
+		t.Fatal("client construction should fail without credentials")
 	}
 }
 
@@ -394,32 +370,21 @@ func TestMainRunArgumentValidation(t *testing.T) {
 	}
 
 	code, _, stderr = runMainProcess(t, []string{"run", "bigquery_query"}, `{"sql":"SELECT 1"}`, nil)
-	if code != 2 || !strings.Contains(stderr, "BQ_PROJECT_ID is required") {
+	if code != 2 || !strings.Contains(stderr, "GOOGLE_CLOUD_PROJECT is required") {
 		t.Fatalf("missing project: exit=%d stderr=%q", code, stderr)
 	}
 }
 
 func TestMainProjectEnvResolution(t *testing.T) {
 	code, _, stderr := runMainProcess(t, []string{"run", "bigquery_query"}, `{"sql":"SELECT 1"}`, map[string]string{
-		"ALFRED_BQ_PROJECT_ID":           "legacy",
+		"GOOGLE_CLOUD_PROJECT":           "proj",
 		"GOOGLE_APPLICATION_CREDENTIALS": "/nonexistent",
 	})
-	if strings.Contains(stderr, "BQ_PROJECT_ID is required") {
-		t.Fatal("legacy project env ignored")
+	if strings.Contains(stderr, "GOOGLE_CLOUD_PROJECT is required") {
+		t.Fatal("project env ignored")
 	}
 	if code != 1 {
-		t.Fatalf("legacy env: exit=%d, want 1 (stderr=%q)", code, stderr)
-	}
-
-	code, _, stderr = runMainProcess(t, []string{"run", "bigquery_query"}, `{"sql":"SELECT 1"}`, map[string]string{
-		"BQ_PROJECT_ID":                  "modern",
-		"GOOGLE_APPLICATION_CREDENTIALS": "/nonexistent",
-	})
-	if strings.Contains(stderr, "BQ_PROJECT_ID is required") {
-		t.Fatal("modern project env ignored")
-	}
-	if code != 1 {
-		t.Fatalf("modern env: exit=%d, want 1 (stderr=%q)", code, stderr)
+		t.Fatalf("env: exit=%d, want 1 (stderr=%q)", code, stderr)
 	}
 }
 
@@ -500,7 +465,7 @@ func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func stubGCS(t *testing.T, status int, body string) {
 	t.Helper()
-	t.Setenv("BQ_CREDENTIALS_JSON", `{"type":"authorized_user","client_id":"cid","client_secret":"csec","refresh_token":"rt"}`)
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", `{"type":"authorized_user","client_id":"cid","client_secret":"csec","refresh_token":"rt"}`)
 	orig := http.DefaultTransport
 	http.DefaultTransport = rtFunc(func(r *http.Request) (*http.Response, error) {
 		resp := &http.Response{
@@ -529,7 +494,7 @@ func cleanBQEnv() []string {
 			key = kv[:i]
 		}
 		switch key {
-		case "BQ_PROJECT_ID", "ALFRED_BQ_PROJECT_ID", "BQ_CREDENTIALS_JSON", "ALFRED_BQ_CREDENTIALS_JSON", "GOOGLE_APPLICATION_CREDENTIALS", "BQX_HELPER_PROCESS", "BQX_TEST_ARGS":
+		case "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "BQX_HELPER_PROCESS", "BQX_TEST_ARGS":
 			continue
 		}
 		out = append(out, kv)
