@@ -99,10 +99,10 @@ func TestValidateQueryRejectsNonQueryJob(t *testing.T) {
 
 func TestValidateQueryReportsRunFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
+		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, `{"error":{"code":400,"message":"invalid query"}}`)
+		_, _ = io.WriteString(w, `{"error":{"code":400,"message":"invalid query"}}`)
 	}))
 	t.Cleanup(srv.Close)
 	client := bqClient(t, srv)
@@ -262,6 +262,15 @@ func TestGoogleHTTPClientRequiresCredentials(t *testing.T) {
 	}
 }
 
+func TestGoogleHTTPClientAcceptsInlineCredentials(t *testing.T) {
+	t.Setenv("BQ_CREDENTIALS_JSON", "")
+	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", `{"type":"authorized_user","client_id":"cid","client_secret":"csec","refresh_token":"rt"}`)
+	if _, err := googleHTTPClient(context.Background()); err != nil {
+		t.Fatalf("inline GOOGLE_APPLICATION_CREDENTIALS should be accepted: %v", err)
+	}
+}
+
 func TestCopyGCSObjectReportsDirectoryError(t *testing.T) {
 	stubGCS(t, http.StatusOK, "data")
 	tmp := t.TempDir()
@@ -287,7 +296,7 @@ func TestNewClientCredentialPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modern credential should take precedence: %v", err)
 	}
-	c.Close()
+	_ = c.Close()
 
 	t.Setenv("BQ_CREDENTIALS_JSON", "")
 	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", valid)
@@ -295,7 +304,16 @@ func TestNewClientCredentialPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy credential fallback: %v", err)
 	}
-	c.Close()
+	_ = c.Close()
+
+	t.Setenv("BQ_CREDENTIALS_JSON", "")
+	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", valid)
+	c, err = newClient(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("GOOGLE_APPLICATION_CREDENTIALS inline JSON should be accepted: %v", err)
+	}
+	_ = c.Close()
 
 	t.Setenv("BQ_CREDENTIALS_JSON", "")
 	t.Setenv("ALFRED_BQ_CREDENTIALS_JSON", "")
@@ -431,22 +449,22 @@ func TestMainProcessHelper(t *testing.T) {
 func fakeBQServer(t *testing.T, stmt string, rowCount int) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
+		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.URL.Path == "/projects/proj/jobs" && r.Method == http.MethodPost:
-			fmt.Fprintf(w, `{"kind":"bigquery#job","jobReference":{"projectId":"proj","jobId":"j"},"configuration":{"query":{"query":"q"}},"status":{"state":"DONE","errors":[]},"statistics":{"query":{"statementType":%q}}}`, stmt)
+			_, _ = fmt.Fprintf(w, `{"kind":"bigquery#job","jobReference":{"projectId":"proj","jobId":"j"},"configuration":{"query":{"query":"q"}},"status":{"state":"DONE","errors":[]},"statistics":{"query":{"statementType":%q}}}`, stmt)
 		case r.URL.Path == "/projects/proj/queries" && r.Method == http.MethodPost:
-			fmt.Fprintf(w, `{"kind":"bigquery#queryResponse","jobReference":{"projectId":"proj","jobId":"j"},"jobComplete":true,"totalRows":%q,"rows":[`, strconv.Itoa(rowCount))
+			_, _ = fmt.Fprintf(w, `{"kind":"bigquery#queryResponse","jobReference":{"projectId":"proj","jobId":"j"},"jobComplete":true,"totalRows":%q,"rows":[`, strconv.Itoa(rowCount))
 			for i := 0; i < rowCount; i++ {
 				if i > 0 {
-					io.WriteString(w, ",")
+					_, _ = io.WriteString(w, ",")
 				}
-				fmt.Fprintf(w, `{"f":[{"v":%q}]}`, strconv.Itoa(i))
+				_, _ = fmt.Fprintf(w, `{"f":[{"v":%q}]}`, strconv.Itoa(i))
 			}
-			io.WriteString(w, `],"schema":{"fields":[{"name":"col","type":"INTEGER"}]}}`)
+			_, _ = io.WriteString(w, `],"schema":{"fields":[{"name":"col","type":"INTEGER"}]}}`)
 		default:
-			io.WriteString(w, `{}`)
+			_, _ = io.WriteString(w, `{}`)
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -456,9 +474,9 @@ func fakeBQServer(t *testing.T, stmt string, rowCount int) *httptest.Server {
 func fakeJobServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
+		_, _ = io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, body)
+		_, _ = io.WriteString(w, body)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -470,7 +488,7 @@ func bqClient(t *testing.T, srv *httptest.Server) *bigquery.Client {
 	if err != nil {
 		t.Fatalf("bigquery.NewClient: %v", err)
 	}
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
 

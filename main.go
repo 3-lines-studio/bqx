@@ -67,7 +67,7 @@ func main() {
 	if err != nil {
 		fail(1, err.Error())
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	result, err := query(ctx, client, input.SQL)
 	if err != nil {
 		fail(1, err.Error())
@@ -75,15 +75,24 @@ func main() {
 	fmt.Println(result)
 }
 
+func credentialsJSON() string {
+	if c := os.Getenv("BQ_CREDENTIALS_JSON"); c != "" {
+		return c
+	}
+	if c := os.Getenv("ALFRED_BQ_CREDENTIALS_JSON"); c != "" {
+		return c
+	}
+	if c := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); strings.HasPrefix(strings.TrimSpace(c), "{") {
+		return c
+	}
+	return ""
+}
+
 func newClient(ctx context.Context, project string) (*bigquery.Client, error) {
-	credentials := os.Getenv("BQ_CREDENTIALS_JSON")
-	if credentials == "" {
-		credentials = os.Getenv("ALFRED_BQ_CREDENTIALS_JSON")
+	if credentials := credentialsJSON(); credentials != "" {
+		return bigquery.NewClient(ctx, project, option.WithCredentialsJSON([]byte(credentials)))
 	}
-	if credentials == "" {
-		return bigquery.NewClient(ctx, project)
-	}
-	return bigquery.NewClient(ctx, project, option.WithCredentialsJSON([]byte(credentials)))
+	return bigquery.NewClient(ctx, project)
 }
 
 func copyGCSObject(ctx context.Context, bucket, object, destination string) error {
@@ -105,7 +114,7 @@ func copyGCSObject(ctx context.Context, bucket, object, destination string) erro
 	if err != nil {
 		return fmt.Errorf("download object: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
 		return fmt.Errorf("download object: %s: %s", response.Status, strings.TrimSpace(string(body)))
@@ -132,18 +141,14 @@ func copyGCSObject(ctx context.Context, bucket, object, destination string) erro
 }
 
 func googleHTTPClient(ctx context.Context) (*http.Client, error) {
-	credentials := os.Getenv("BQ_CREDENTIALS_JSON")
-	if credentials == "" {
-		credentials = os.Getenv("ALFRED_BQ_CREDENTIALS_JSON")
+	if credentials := credentialsJSON(); credentials != "" {
+		googleCredentials, err := google.CredentialsFromJSON(ctx, []byte(credentials), "https://www.googleapis.com/auth/devstorage.read_only")
+		if err != nil {
+			return nil, err
+		}
+		return oauth2.NewClient(ctx, googleCredentials.TokenSource), nil
 	}
-	if credentials == "" {
-		return google.DefaultClient(ctx, "https://www.googleapis.com/auth/devstorage.read_only")
-	}
-	googleCredentials, err := google.CredentialsFromJSON(ctx, []byte(credentials), "https://www.googleapis.com/auth/devstorage.read_only")
-	if err != nil {
-		return nil, err
-	}
-	return oauth2.NewClient(ctx, googleCredentials.TokenSource), nil
+	return google.DefaultClient(ctx, "https://www.googleapis.com/auth/devstorage.read_only")
 }
 
 func query(ctx context.Context, client *bigquery.Client, sql string) (string, error) {
