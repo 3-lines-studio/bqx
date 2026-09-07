@@ -79,7 +79,7 @@ func TestValidateQueryRejectsNonSelect(t *testing.T) {
 		if err == nil {
 			t.Fatalf("statement type %q accepted", stmt)
 		}
-		if !strings.Contains(err.Error(), "only SELECT queries") {
+		if !strings.Contains(err.Error(), "only SELECT and WITH") {
 			t.Fatalf("statement type %q: %v", stmt, err)
 		}
 	}
@@ -92,7 +92,7 @@ func TestValidateQueryRejectsNonQueryJob(t *testing.T) {
 	if err == nil {
 		t.Fatal("non-query job accepted")
 	}
-	if !strings.Contains(err.Error(), "only SELECT queries") {
+	if !strings.Contains(err.Error(), "only SELECT and WITH") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -144,15 +144,18 @@ func TestQueryReturnsAllRowsUnderCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if strings.Contains(out, "truncated") {
+	var parsed struct {
+		Rows      []map[string]any `json:"rows"`
+		Truncated bool             `json:"truncated"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("output not JSON object: %v (%q)", err, out)
+	}
+	if parsed.Truncated {
 		t.Fatalf("unexpected truncation: %q", out)
 	}
-	var rows []map[string]any
-	if err := json.Unmarshal([]byte(out), &rows); err != nil {
-		t.Fatalf("output not a JSON array: %v (%q)", err, out)
-	}
-	if len(rows) != 3 {
-		t.Fatalf("want 3 rows, got %d", len(rows))
+	if len(parsed.Rows) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(parsed.Rows))
 	}
 }
 
@@ -163,17 +166,18 @@ func TestQueryTruncatesAtMaxRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	const message = "Results truncated at 1000 rows."
-	if !strings.HasSuffix(out, "\n"+message) {
-		t.Fatalf("missing truncation notice: %q", out)
+	var parsed struct {
+		Rows      []map[string]any `json:"rows"`
+		Truncated bool             `json:"truncated"`
 	}
-	idx := strings.LastIndex(out, "\n")
-	var rows []map[string]any
-	if err := json.Unmarshal([]byte(out[:idx]), &rows); err != nil {
-		t.Fatalf("JSON section invalid: %v", err)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("output not JSON object: %v (%q)", err, out)
 	}
-	if len(rows) != maxRows {
-		t.Fatalf("want %d rows, got %d", maxRows, len(rows))
+	if !parsed.Truncated {
+		t.Fatalf("expected truncation flag: %q", out)
+	}
+	if len(parsed.Rows) != maxRows {
+		t.Fatalf("want %d rows, got %d", maxRows, len(parsed.Rows))
 	}
 }
 

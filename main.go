@@ -171,15 +171,11 @@ func query(ctx context.Context, client *bigquery.Client, sql string) (string, er
 		}
 		result = append(result, row)
 	}
-	data, err := json.Marshal(result)
+	payload, err := json.Marshal(map[string]any{"rows": result, "truncated": truncated})
 	if err != nil {
 		return "", fmt.Errorf("encode result: %w", err)
 	}
-	output := string(data)
-	if truncated {
-		output += "\nResults truncated at 1000 rows."
-	}
-	return output, nil
+	return string(payload), nil
 }
 
 func validateQuery(ctx context.Context, client *bigquery.Client, sql string) error {
@@ -195,7 +191,7 @@ func validateQuery(ctx context.Context, client *bigquery.Client, sql string) err
 	}
 	stats, ok := status.Statistics.Details.(*bigquery.QueryStatistics)
 	if !ok || stats.StatementType != "SELECT" {
-		return errors.New("only SELECT queries are allowed")
+		return errors.New("only SELECT and WITH queries are allowed")
 	}
 	return nil
 }
